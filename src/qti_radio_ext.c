@@ -99,6 +99,7 @@ enum qti_radio_ext_signal {
     SIGNAL_EXT_ON_RING,
     SIGNAL_EXT_ON_INCOMING_SMS,
     SIGNAL_EXT_ON_SMS_REPORT,
+    SIGNAL_EXT_ON_RINGBACK_TONE,
     SIGNAL_COUNT
 };
 
@@ -107,6 +108,7 @@ enum qti_radio_ext_signal {
 #define SIGNAL_EXT_ON_RING_NAME                     "qti-radio-ext-on-ring"
 #define SIGNAL_EXT_ON_INCOMING_SMS_NAME             "qti-radio-ext-on-incoming-sms"
 #define SIGNAL_EXT_ON_SMS_REPORT_NAME               "qti-radio-ext-on-sms-report"
+#define SIGNAL_EXT_ON_RINGBACK_TONE_NAME            "qti-radio-ext-on-ringback-tone"
 
 static guint qti_radio_ext_signals[SIGNAL_COUNT] = { 0 };
 
@@ -453,6 +455,23 @@ qti_radio_ext_handle_call_state_indication(
     }
 }
 
+static
+void
+qti_radio_ext_handle_ringback_tone_indication(
+    QtiRadioExt* self,
+    const GBinderReader* args)
+{
+    gboolean status;
+    GBinderReader reader;
+
+    gbinder_reader_copy(&reader, args);
+    if (gbinder_reader_read_bool(&reader, &status)) {
+        g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_RINGBACK_TONE], 0, status);
+    }
+
+    DBG("%s: failed to parse ringback tone data", self->slot);
+}
+
 /*
 typedef struct qti_radio_incoming_ims_sms {
     GBinderHidlString format RADIO_ALIGNED(8);
@@ -566,6 +585,9 @@ qti_radio_ext_indication(
         case QTI_RADIO_IND_RING_INDICATION:
             g_signal_emit(self, qti_radio_ext_signals[SIGNAL_EXT_ON_RING], 0);
             return NULL;
+        case QTI_RADIO_IND_RINGBACK_TONE_INDICATION:
+            qti_radio_ext_handle_ringback_tone_indication(self, &args);
+            return NULL;
         }
     } else if (g_str_equal(iface, QTI_RADIO_INDICATION_1_1)) {
         switch(code) {
@@ -618,6 +640,16 @@ qti_radio_ext_add_ring_handler(
 {
     return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
         SIGNAL_EXT_ON_RING_NAME, G_CALLBACK(handler), user_data) : 0;
+}
+
+gulong
+qti_radio_ext_add_ringback_tone_handler(
+    QtiRadioExt* self,
+    QtiRadioExtRingbackToneFunc handler,
+    void* user_data)
+{
+    return (G_LIKELY(self) && G_LIKELY(handler)) ? g_signal_connect(self,
+        SIGNAL_EXT_ON_RINGBACK_TONE_NAME, G_CALLBACK(handler), user_data) : 0;
 }
 
 gulong
@@ -1467,6 +1499,10 @@ qti_radio_ext_class_init(
         g_signal_new(SIGNAL_EXT_ON_RING_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
             0);
+    qti_radio_ext_signals[SIGNAL_EXT_ON_RINGBACK_TONE] =
+        g_signal_new(SIGNAL_EXT_ON_RINGBACK_TONE_NAME, G_OBJECT_CLASS_TYPE(klass),
+            G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+            1, G_TYPE_BOOLEAN);
     qti_radio_ext_signals[SIGNAL_EXT_ON_INCOMING_SMS] =
         g_signal_new(SIGNAL_EXT_ON_INCOMING_SMS_NAME, G_OBJECT_CLASS_TYPE(klass),
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,

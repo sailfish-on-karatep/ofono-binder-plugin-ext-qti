@@ -76,6 +76,7 @@ enum qti_ims_call_signal {
     SIGNAL_CALL_END,
     SIGNAL_CALL_RING,
     SIGNAL_CALL_SUPP_SVC_NOTIFY,
+    SIGNAL_CALL_RINGBACK_TONE,
     SIGNAL_COUNT
 };
 
@@ -83,6 +84,7 @@ enum qti_ims_call_signal {
 #define SIGNAL_CALL_END_NAME              "qti-ims-call-end"
 #define SIGNAL_CALL_RING_NAME             "qti-ims-call-ring"
 #define SIGNAL_CALL_SUPP_SVC_NOTIFY_NAME  "qti-ims-call-supp-svc-notify"
+#define SIGNAL_CALL_RINGBACK_TONE_NAME    "qti-ims-call-ringback-tone"
 
 static guint qti_ims_call_signals[SIGNAL_COUNT] = { 0 };
 
@@ -220,6 +222,17 @@ qti_ims_call_handle_ring(
 {
     g_signal_emit(THIS(user_data),
         qti_ims_call_signals[SIGNAL_CALL_RING], 0);
+}
+
+static
+void
+qti_ims_call_handle_ringback_tone(
+        QtiRadioExt* radio,
+        gboolean status,
+        void* user_data)
+{
+    g_signal_emit(THIS(user_data),
+        qti_ims_call_signals[SIGNAL_CALL_RINGBACK_TONE], 0, status);
 }
 
 static
@@ -440,6 +453,17 @@ qti_ims_call_add_ring_handler(
 
 static
 gulong
+qti_ims_call_add_ringback_tone_handler(
+    BinderExtCall* ext,
+    BinderExtCallRingbackToneFunc cb,
+    void* user_data)
+{
+    return G_LIKELY(cb) ? g_signal_connect(THIS(ext),
+        SIGNAL_CALL_RINGBACK_TONE_NAME, G_CALLBACK(cb), user_data) : 0;
+}
+
+static
+gulong
 qti_ims_call_add_ssn_handler(
     BinderExtCall* ext,
     BinderExtCallSuppSvcNotifyFunc cb,
@@ -469,6 +493,7 @@ qti_ims_call_iface_init(
     iface->add_disconnect_handler = qti_ims_call_add_disconnect_handler;
     iface->add_ring_handler = qti_ims_call_add_ring_handler;
     iface->add_ssn_handler = qti_ims_call_add_ssn_handler;
+    iface->add_ringback_tone_handler = qti_ims_call_add_ringback_tone_handler;
 }
 
 /*==========================================================================*
@@ -489,6 +514,8 @@ qti_ims_call_new(
             qti_ims_call_handle_call_info, self);
         qti_radio_ext_add_ring_handler(radio_ext,
             qti_ims_call_handle_ring, self);
+        qti_radio_ext_add_ringback_tone_handler(radio_ext,
+            qti_ims_call_handle_ringback_tone, self);
 
         return BINDER_EXT_CALL(self);
     }
@@ -544,6 +571,9 @@ qti_ims_call_class_init(
         g_signal_new(SIGNAL_CALL_SUPP_SVC_NOTIFY_NAME, type,
             G_SIGNAL_RUN_FIRST, 0, NULL, NULL, NULL, G_TYPE_NONE,
             1, G_TYPE_POINTER);
+    qti_ims_call_signals[SIGNAL_CALL_RINGBACK_TONE] =
+            g_signal_new(SIGNAL_CALL_RINGBACK_TONE_NAME, type, G_SIGNAL_RUN_FIRST, 0,
+                         NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
 }
 
 /*
