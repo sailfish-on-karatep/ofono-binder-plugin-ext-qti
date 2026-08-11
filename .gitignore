@@ -1,2 +1,5 @@
 # build_packages.sh drops this in the source tree
 documentation.list
+
+# make output
+build/
