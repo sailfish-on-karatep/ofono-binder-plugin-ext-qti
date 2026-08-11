@@ -1,6 +1,11 @@
 Name: ofono-binder-plugin-ext-qti
 
-Version: 0.0.1
+# 0.0.2, not 0.0.1, so this fork outranks the prebuilt package in the
+# Sailfish repos. That one is versioned 0.0.1+main.<timestamp>.<sha>, and
+# RPM ranks 0.0.1+main... ABOVE a plain 0.0.1 -- so a locally built 0.0.1
+# is silently ignored by mic and zypper and the image ships upstream's
+# build instead. Bumping the minor version is the unambiguous fix.
+Version: 0.0.2
 Release: 1
 Summary: QTI IRadio extension ofono binder plugin
 License: GPLv2
