@@ -192,6 +192,21 @@ qti_ims_reg_status_response(
     QTI_RADIO_REG_STATE state = QTI_RADIO_REG_STATE_INVALID;
     GBinderReader reader_copy;
 
+    /*
+     * The payload only means anything if the request succeeded. When the HAL
+     * refuses getImsRegistrationState it still returns a RegistrationInfo, but
+     * a zeroed one -- and QTI_RADIO_REG_STATE_REGISTERED is 0, so taking
+     * info->state on faith turns every failure into a claim that IMS is
+     * registered. That is exactly what happens on a modem that rejects the
+     * request, and it is invisible from the outside: ofono publishes
+     * IpMultimediaSystem Registered=true while no IMS registration exists and
+     * every call falls back to CS.
+     */
+    if (result) {
+        DBG("Get reg state failed, error %d", result);
+        return;
+    }
+
     gbinder_reader_copy(&reader_copy, reader);
     const QtiRadioRegInfo* info = qti_radio_ext_read_ims_reg_status_info(radio_ext, &reader_copy);
 
@@ -205,6 +220,23 @@ qti_ims_reg_status_response(
     DBG("Get reg state %d now", state);
 
     qti_ims_reg_status_changed(radio_ext, state, req->user_data);
+}
+
+static
+void
+qti_ims_set_service_status_response(
+    QtiRadioExt* radio_ext,
+    int result,
+    GBinderReader* reader,
+    void* user_data)
+{
+    QtiIms* self = THIS(user_data);
+
+    if (result) {
+        DBG("%s setServiceStatus failed, error %d", self->slot, result);
+    } else {
+        DBG("%s IMS voice service enabled", self->slot);
+    }
 }
 
 /*==========================================================================*
@@ -254,6 +286,23 @@ qti_ims_set_registration(
 
     // update the state
     g_signal_emit(self, qti_ims_signals[SIGNAL_GET_STATE], 0);
+
+    /*
+     * Enable the IMS voice service before asking for registration.
+     *
+     * requestRegistrationChange alone is not enough on every QTI RIL: some map
+     * it to QMI IMSS "set IMS test mode", which a production modem refuses, so
+     * nothing ever reaches the modem's IMS stack and it never attempts to
+     * register. setServiceStatus is the call Android's ims.apk uses, and it
+     * reaches QMI IMSS "set IMS service enable config". Sent fire-and-forget:
+     * a HAL that does not implement it answers with an error we only log, and
+     * the requestRegistrationChange below still drives ofono's result as
+     * before.
+     */
+    qti_radio_ext_set_service_status(self->radio_ext,
+        QTI_RADIO_SERVICE_TYPE_VOIP,
+        enabled ? QTI_RADIO_STATUS_ENABLED : QTI_RADIO_STATUS_DISABLED,
+        qti_ims_set_service_status_response, NULL, self);
 
     QtiImsResultRequest* req = qti_ims_result_request_new(ext,
         complete, destroy, user_data);

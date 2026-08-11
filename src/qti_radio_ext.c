@@ -1101,6 +1101,114 @@ binder_copy_hidl_string(
 
 static
 void
+qti_radio_ext_set_service_status_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    const gint32 type = va_arg(va, gint32);
+    const gint32 status = va_arg(va, gint32);
+
+    /*
+     * Each accTechStatus entry embeds a RegistrationInfo, whose two hidl_string
+     * members need their own child buffers even when empty -- hence the nested
+     * writer type.
+     */
+    static const GBinderWriterField qti_radio_status_for_access_tech_f[] = {
+        GBINDER_WRITER_FIELD_HIDL_STRING
+            (QtiRadioStatusForAccessTech, registration.error_message),
+        GBINDER_WRITER_FIELD_HIDL_STRING
+            (QtiRadioStatusForAccessTech, registration.uri),
+        GBINDER_WRITER_FIELD_END()
+    };
+    static const GBinderWriterType qti_radio_status_for_access_tech_t = {
+        GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioStatusForAccessTech),
+        qti_radio_status_for_access_tech_f
+    };
+
+    static const GBinderWriterField qti_radio_service_status_info_f[] = {
+        GBINDER_WRITER_FIELD_HIDL_VEC_BYTE
+            (QtiRadioServiceStatusInfo, userdata),
+        GBINDER_WRITER_FIELD_HIDL_VEC
+            (QtiRadioServiceStatusInfo, acc_tech_status,
+             &qti_radio_status_for_access_tech_t),
+        GBINDER_WRITER_FIELD_END()
+    };
+    static const GBinderWriterType qti_radio_service_status_info_t = {
+        GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioServiceStatusInfo),
+        qti_radio_service_status_info_f
+    };
+
+    QtiRadioServiceStatusInfo* info =
+        gbinder_writer_new0(args, QtiRadioServiceStatusInfo);
+    QtiRadioStatusForAccessTech* acc_tech =
+        gbinder_writer_new0(args, QtiRadioStatusForAccessTech);
+    GBinderHidlVec* empty_userdata = gbinder_writer_new0(args, GBinderHidlVec);
+
+    info->has_is_valid = TRUE;
+    info->is_valid = TRUE;
+    info->type = type;
+    info->call_type = QTI_RADIO_CALL_TYPE_VOICE;
+    info->status = status;
+    info->restrict_cause = 0;
+    info->rtt_mode = 0;
+
+    info->userdata.count = 0;
+    info->userdata.data.ptr = empty_userdata;
+    info->userdata.owns_buffer = TRUE;
+
+    /*
+     * accTechStatus must not be empty. qcril's handler checks it and answers
+     * "request misses some necessary information" -> GENERIC_FAILURE if the
+     * list is missing, which is indistinguishable from the modem refusing.
+     * One entry naming LTE is what enables VoLTE; the embedded RegistrationInfo
+     * is an output field, so it is left zeroed with hasRegistration false.
+     */
+    acc_tech->network_mode = QTI_RADIO_TECH_TYPE_LTE;
+    acc_tech->status = status;
+    acc_tech->restrict_cause = 0;
+    acc_tech->has_registration = FALSE;
+    binder_copy_hidl_string(args, &acc_tech->registration.error_message, NULL);
+    binder_copy_hidl_string(args, &acc_tech->registration.uri, NULL);
+
+    info->acc_tech_status.count = 1;
+    info->acc_tech_status.data.ptr = acc_tech;
+    info->acc_tech_status.owns_buffer = TRUE;
+
+    gbinder_writer_append_struct(args, info,
+        &qti_radio_service_status_info_t, NULL);
+}
+
+/*
+ * Enable or disable an IMS service in the modem.
+ *
+ * This -- not requestRegistrationChange -- is what actually turns VoLTE on.
+ * On this vendor's RIL requestRegistrationChange is wired to QMI IMSS "set IMS
+ * test mode", which a production modem refuses with GENERIC_FAILURE, so the
+ * modem is never asked to register at all. Android's ims.apk drives IMS
+ * through setServiceStatus, which reaches QMI IMSS "set IMS service enable
+ * config".
+ */
+guint
+qti_radio_ext_set_service_status(
+    QtiRadioExt* self,
+    QTI_RADIO_SERVICE_TYPE type,
+    QTI_RADIO_STATUS status,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    DBG("Setting service %d status %d", type, status);
+
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_SET_SERVICE_STATUS,
+        QTI_RADIO_RESP_SET_SERVICE_STATUS,
+        qti_radio_ext_set_service_status_args,
+        complete, destroy, user_data,
+        (gint32) type, (gint32) status);
+}
+
+static
+void
 qti_radio_ext_dial_args(
     GBinderWriter* args,
     va_list va)

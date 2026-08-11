@@ -67,6 +67,41 @@ typedef enum qti_radio_reg_state {
 } QTI_RADIO_REG_STATE;
 
 /*
+enum ServiceType : int32_t {
+    SMS,
+    VOIP,
+    VT,
+    INVALID,
+};
+*/
+
+typedef enum qti_radio_service_type {
+    QTI_RADIO_SERVICE_TYPE_SMS = 0,
+    QTI_RADIO_SERVICE_TYPE_VOIP = 1,
+    QTI_RADIO_SERVICE_TYPE_VT = 2,
+    QTI_RADIO_SERVICE_TYPE_INVALID = 3,
+} QTI_RADIO_SERVICE_TYPE;
+
+/*
+enum RadioTechType : int32_t {
+    RADIO_TECH_ANY,
+    RADIO_TECH_UNKNOWN,
+    ...
+};
+
+Only the values this plugin needs are spelled out; the full enum runs to
+RADIO_TECH_INVALID = 21.
+*/
+
+typedef enum qti_radio_tech_type {
+    QTI_RADIO_TECH_TYPE_ANY = 0,
+    QTI_RADIO_TECH_TYPE_UNKNOWN = 1,
+    QTI_RADIO_TECH_TYPE_LTE = 15,
+    QTI_RADIO_TECH_TYPE_IWLAN = 20,
+    QTI_RADIO_TECH_TYPE_INVALID = 21,
+} QTI_RADIO_TECH_TYPE;
+
+/*
 enum StatusType : int32_t {
     STATUS_DISABLED,
     STATUS_PARTIALLY_ENABLED,
@@ -428,9 +463,36 @@ struct ServiceStatusInfo {
 
     */
 
+/*
+struct StatusForAccessTech {
+    RadioTechType networkMode;
+    StatusType status;
+    uint32_t restrictCause;
+    bool hasRegistration;
+    RegistrationInfo registration;
+};
+
+Offsets recovered from ims.apk's generated readEmbeddedFromParcel(): 0, 4, 8,
+12, 16, total 64.
+*/
+
+typedef struct qti_radio_status_for_access_tech {
+    guint32 network_mode RADIO_ALIGNED(4);
+    guint32 status RADIO_ALIGNED(4);
+    guint32 restrict_cause RADIO_ALIGNED(4);
+    guint8 has_registration RADIO_ALIGNED(1);
+    QtiRadioRegInfo registration RADIO_ALIGNED(8);
+} RADIO_ALIGNED(8) QtiRadioStatusForAccessTech;
+
+/*
+ * hasIsValid and isValid are HIDL bool, which is one byte -- as guint32 they
+ * pushed every following field 8 bytes out and made the struct 72 bytes where
+ * the interface says 64, so it could never have matched a parcel. Nothing read
+ * or wrote this struct before setServiceStatus, so the mistake was invisible.
+ */
 typedef struct qti_radio_service_status_info {
-    gboolean has_is_valid RADIO_ALIGNED(4);
-    gboolean is_valid RADIO_ALIGNED(4);
+    guint8 has_is_valid RADIO_ALIGNED(1);
+    guint8 is_valid RADIO_ALIGNED(1);
     guint32 type RADIO_ALIGNED(4);
     guint32 call_type RADIO_ALIGNED(4);
     guint32 status RADIO_ALIGNED(4);
@@ -438,7 +500,7 @@ typedef struct qti_radio_service_status_info {
     guint32 restrict_cause RADIO_ALIGNED(4);
     GBinderHidlVec acc_tech_status RADIO_ALIGNED(8);
     guint32 rtt_mode RADIO_ALIGNED(4);
-} QtiRadioServiceStatusInfo;
+} RADIO_ALIGNED(8) QtiRadioServiceStatusInfo;
 
 /*
 struct CallDetails {
@@ -597,6 +659,7 @@ typedef struct qti_radio_hangup_request_info {
     c(5, 2, answer, ANSWER) \
     c(6, 3, hangup, HANGUP) \
     c(7, 4, requestRegistrationChange, REQ_REG_CHANGE) \
+    c(9, 6, setServiceStatus, SET_SERVICE_STATUS) \
     c(31, 28, setSuppServiceNotification, SET_SUPP_SVC_NOTIFICATION) \
     c(40, 29, cancelModifyCall, CANCEL_MODIFY_CALL) \
 
