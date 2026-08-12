@@ -381,6 +381,37 @@ qti_ims_config_probe(
         DBG("%s config probe: write-back mapping enabled", self->slot);
     }
 
+    /*
+     * QTI_IMS_CONFIG_SET is a comma-separated list of items to write TRUE to,
+     * so a candidate can be identified without rebuilding for each guess.
+     *
+     * The write-back sweep above cannot do this job on this device: the HAL
+     * accepts all 72 getConfig requests and answers none of them, so nothing
+     * is ever read back and there is no value to write back. Identifying an
+     * item therefore costs one real write, and qcril names it in the log
+     * before it goes to the modem.
+     */
+    {
+        const char* set = getenv("QTI_IMS_CONFIG_SET");
+
+        if (set && set[0]) {
+            char** items = g_strsplit(set, ",", -1);
+            int i;
+
+            for (i = 0; items[i]; i++) {
+                int n = atoi(g_strstrip(items[i]));
+
+                if (n > 0 && n <= 72) {
+                    DBG("%s probing item %d with TRUE", self->slot, n);
+                    qti_radio_ext_set_config(self->radio_ext,
+                        (QTI_RADIO_CONFIG_ITEM) n, TRUE,
+                        qti_ims_set_config_response, NULL, self);
+                }
+            }
+            g_strfreev(items);
+        }
+    }
+
     /* 0 is CONFIG_ITEM_NONE and 73 is CONFIG_ITEM_INVALID; skip both */
     DBG("%s config probe: sweeping items 1..72", self->slot);
     for (item = 1; item <= 72; item++) {
