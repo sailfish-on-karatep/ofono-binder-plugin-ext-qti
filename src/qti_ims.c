@@ -48,6 +48,8 @@
 #include <gutil_log.h>
 #include <gbinder.h>
 
+#include <stdlib.h>
+
 #undef DBG
 #define DBG(fmt, ...) \
     gutil_log(GLOG_MODULE_CURRENT, GLOG_LEVEL_ALWAYS, "ims:"fmt, ##__VA_ARGS__)
@@ -241,6 +243,57 @@ qti_ims_set_service_status_response(
 
 static
 void
+qti_ims_get_config_response(
+    QtiRadioExt* radio_ext,
+    int result,
+    GBinderReader* reader,
+    void* user_data)
+{
+    QtiIms* self = THIS(user_data);
+
+    DBG("%s getConfig result %d", self->slot, result);
+}
+
+/*
+ * Diagnostic: ask for every config item in turn.
+ *
+ * getConfig writes nothing, but qcril logs which radio-config item it mapped
+ * the request to and which handler it dispatched to, so a sweep recovers the
+ * whole ims-item -> radio-item -> handler table from the device itself. That
+ * matters because the item that reaches QMI IMSS "set IMS service enable
+ * config" -- the call a working handset makes on SIM insert, and the one this
+ * stack has never made -- is not documented anywhere we can read, and the
+ * mapping table inside libril-qc-qmi-1.so cannot be resolved statically
+ * because Android packs its relocations.
+ *
+ * Off unless QTI_IMS_CONFIG_PROBE is set in ofono's environment, and runs at
+ * most once per process.
+ */
+static
+void
+qti_ims_config_probe(
+    QtiIms* self)
+{
+    static gboolean probed = FALSE;
+    const char* env = getenv("QTI_IMS_CONFIG_PROBE");
+    int item;
+
+    if (probed || !env || !env[0] || env[0] == '0') {
+        return;
+    }
+    probed = TRUE;
+
+    /* 0 is CONFIG_ITEM_NONE and 73 is CONFIG_ITEM_INVALID; skip both */
+    DBG("%s config probe: sweeping items 1..72", self->slot);
+    for (item = 1; item <= 72; item++) {
+        qti_radio_ext_get_config(self->radio_ext,
+            (QTI_RADIO_CONFIG_ITEM) item,
+            qti_ims_get_config_response, NULL, self);
+    }
+}
+
+static
+void
 qti_ims_set_config_response(
     QtiRadioExt* radio_ext,
     int result,
@@ -332,6 +385,8 @@ qti_ims_set_registration(
      * Fire-and-forget, like setServiceStatus below: a HAL without setConfig
      * answers with an error we only log.
      */
+    qti_ims_config_probe(self);
+
     qti_radio_ext_set_config(self->radio_ext,
         QTI_RADIO_CONFIG_ITEM_VLT_SETTING_ENABLED, enabled,
         qti_ims_set_config_response, NULL, self);

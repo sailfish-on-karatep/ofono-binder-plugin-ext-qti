@@ -707,6 +707,7 @@ typedef struct qti_radio_hangup_request_info {
     c(7, 4, requestRegistrationChange, REQ_REG_CHANGE) \
     c(9, 6, setServiceStatus, SET_SERVICE_STATUS) \
     c(12, 9, setConfig, SET_CONFIG) \
+    c(13, 10, getConfig, GET_CONFIG) \
     c(31, 28, setSuppServiceNotification, SET_SUPP_SVC_NOTIFICATION) \
     c(40, 29, cancelModifyCall, CANCEL_MODIFY_CALL) \
 

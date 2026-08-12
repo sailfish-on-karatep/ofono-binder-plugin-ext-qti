@@ -1280,6 +1280,56 @@ qti_radio_ext_set_config(
 
 static
 void
+qti_radio_ext_get_config_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    const gint32 item = va_arg(va, gint32);
+
+    static const GBinderWriterField qti_radio_config_info_f[] = {
+        GBINDER_WRITER_FIELD_HIDL_STRING(QtiRadioConfigInfo, string_value),
+        GBINDER_WRITER_FIELD_END()
+    };
+    static const GBinderWriterType qti_radio_config_info_t = {
+        GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioConfigInfo),
+        qti_radio_config_info_f
+    };
+
+    QtiRadioConfigInfo* info = gbinder_writer_new0(args, QtiRadioConfigInfo);
+
+    info->item = item;
+    binder_copy_hidl_string(args, &info->string_value, NULL);
+
+    gbinder_writer_append_struct(args, info, &qti_radio_config_info_t, NULL);
+}
+
+/*
+ * Read a config item back. Takes the same ConfigInfo as setConfig with only
+ * item filled in, and writes nothing -- which is what makes it usable as a
+ * probe: qcril logs the item it mapped the request to and the handler it
+ * dispatched to, so asking for an item reveals which of its config families
+ * that item belongs to without changing anything.
+ */
+guint
+qti_radio_ext_get_config(
+    QtiRadioExt* self,
+    QTI_RADIO_CONFIG_ITEM item,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    DBG("Getting config item %d", item);
+
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_GET_CONFIG,
+        QTI_RADIO_RESP_GET_CONFIG,
+        qti_radio_ext_get_config_args,
+        complete, destroy, user_data,
+        (gint32) item);
+}
+
+static
+void
 qti_radio_ext_dial_args(
     GBinderWriter* args,
     va_list va)
