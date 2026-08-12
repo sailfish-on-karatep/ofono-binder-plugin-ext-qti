@@ -392,14 +392,21 @@ qti_ims_set_registration(
         qti_ims_set_config_response, NULL, self);
 
     /*
-     * VOLTE_USER_OPT_IN_STATUS is sent as well but is the weaker of the two:
-     * qcril routes it to its *presence* config handler, and on this modem
-     * that write comes back CONFIG_WRITE_FAILED -- the presence service is
-     * one of the QMI services this firmware does not publish. Harmless to
-     * attempt, and it is the item that matters on modems that do have it.
+     * MOBILE_DATA_ENABLED is the item in qcril's IMS_SERVICE_ENABLE family
+     * (QCRIL_QMI_RADIO_CONFIG_IMS_SERVICE_ENABLE_MOBILE_DATA_ENABLED), which
+     * is the path to QMI IMSS "set IMS service enable config" -- the call a
+     * working handset makes on SIM insert, four seconds before IMS registers,
+     * and the one this stack had never made. A getConfig sweep of all 72
+     * items confirms this qcril supports it.
+     *
+     * VOLTE_USER_OPT_IN_STATUS is no longer sent. The same sweep shows this
+     * qcril refuses it, and every other item in the presence family (14-24,
+     * 30, 32), on read as well as write -- so its earlier CONFIG_WRITE_FAILED
+     * was not the modem declining a value, it was a config path this build
+     * does not implement at all.
      */
     qti_radio_ext_set_config(self->radio_ext,
-        QTI_RADIO_CONFIG_ITEM_VOLTE_USER_OPT_IN_STATUS, enabled,
+        QTI_RADIO_CONFIG_ITEM_MOBILE_DATA_ENABLED, TRUE,
         qti_ims_set_config_response, NULL, self);
 
     qti_radio_ext_set_service_status(self->radio_ext,
