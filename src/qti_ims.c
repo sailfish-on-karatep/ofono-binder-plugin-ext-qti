@@ -61,7 +61,14 @@ typedef struct qti_ims {
     char* slot;
     QtiRadioExt* radio_ext;
     BINDER_EXT_IMS_STATE ims_state;
+    gboolean services_enabled;
 } QtiIms;
+
+static
+void
+qti_ims_enable_services(
+    struct qti_ims* self,
+    gboolean enabled);
 
 static
 void
@@ -176,6 +183,21 @@ qti_ims_reg_status_changed(
     if (ims_state != self->ims_state) {
         self->ims_state = ims_state;
         g_signal_emit(self, qti_ims_signals[SIGNAL_STATE_CHANGED], 0);
+    }
+
+    /*
+     * Enable the IMS services here rather than waiting to be asked.
+     *
+     * ofono drives set_registration off a desired-state change it never
+     * decides to make, so on this stack that callback does not run and the
+     * modem is never told the voice service is on. This indication is the
+     * earliest point at which the IMS HAL is demonstrably live -- it is the
+     * modem telling us its registration state -- so it is a sound place to
+     * send the enable sequence, and doing it once per slot keeps it away from
+     * the retry loop a modem in a registration cycle would otherwise drive.
+     */
+    if (!self->services_enabled) {
+        qti_ims_enable_services(self, TRUE);
     }
 }
 
@@ -342,21 +364,28 @@ qti_ims_get_registrations(
     DBG("Get reg state %d", self->ims_state);
 }
 
+/*
+ * Tell the modem's IMS stack that the voice service is on.
+ *
+ * This used to live inside qti_ims_set_registration(), which turned out to be
+ * a callback ofono never invokes on this stack: with Registration=auto the
+ * plugin connects to IImsRadio, takes the first onRegistrationChanged
+ * indication (state 1, not registered), caches it and stops. Nothing further
+ * happens, so none of the calls below were ever made -- confirmed with ofono
+ * debug on, where neither the config probe nor "Setting config item" appears,
+ * and qcril logs no "Set config" line at all.
+ *
+ * That matters because the modem was doing nothing wrong. Enabling the whole
+ * DIAG log mask and scanning for SIP shows it never puts a REGISTER on the
+ * wire -- it is idle, not refused -- and the switch that would make it try is
+ * exactly what these calls throw.
+ */
 static
-guint
-qti_ims_set_registration(
-    BinderExtIms* ext,
-    BINDER_EXT_IMS_REGISTRATION registration,
-    BinderExtImsResultFunc complete,
-    GDestroyNotify destroy,
-    void* user_data)
+void
+qti_ims_enable_services(
+    QtiIms* self,
+    gboolean enabled)
 {
-    QtiIms* self = THIS(ext);
-    const gboolean enabled = (registration != BINDER_EXT_IMS_REGISTRATION_OFF);
-
-    // update the state
-    g_signal_emit(self, qti_ims_signals[SIGNAL_GET_STATE], 0);
-
     /*
      * Enable the IMS voice service before asking for registration.
      *
@@ -413,6 +442,27 @@ qti_ims_set_registration(
         QTI_RADIO_SERVICE_TYPE_VOIP,
         enabled ? QTI_RADIO_STATUS_ENABLED : QTI_RADIO_STATUS_DISABLED,
         qti_ims_set_service_status_response, NULL, self);
+
+    self->services_enabled = enabled;
+    DBG("%s IMS services %s", self->slot, enabled ? "enabled" : "disabled");
+}
+
+static
+guint
+qti_ims_set_registration(
+    BinderExtIms* ext,
+    BINDER_EXT_IMS_REGISTRATION registration,
+    BinderExtImsResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    QtiIms* self = THIS(ext);
+    const gboolean enabled = (registration != BINDER_EXT_IMS_REGISTRATION_OFF);
+
+    // update the state
+    g_signal_emit(self, qti_ims_signals[SIGNAL_GET_STATE], 0);
+
+    qti_ims_enable_services(self, enabled);
 
     QtiImsResultRequest* req = qti_ims_result_request_new(ext,
         complete, destroy, user_data);
