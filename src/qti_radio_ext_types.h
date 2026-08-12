@@ -503,6 +503,52 @@ typedef struct qti_radio_service_status_info {
 } RADIO_ALIGNED(8) QtiRadioServiceStatusInfo;
 
 /*
+enum ConfigItem : int32_t {
+    CONFIG_ITEM_NONE,
+    ...
+};
+
+The full enum runs to 100-odd entries; only the ones this plugin sets are
+spelled out. Values recovered from the device's own ims.apk, which is the
+authority for this interface generation -- see scripts/hidl-from-apk.py.
+
+VOLTE_USER_OPT_IN_STATUS is the provisioning flag Android's telephony
+framework writes when the user turns VoLTE on, and it reaches QMI IMSS
+"set client provisioning config". A modem that has IMS enabled and a service
+status set will still decline to register while the subscriber has not opted
+in, which is what the Xiaomi *#*#86583#*#* dialer code works around on stock
+Android by forcing the framework's carrier check open.
+*/
+typedef enum qti_radio_config_item {
+    QTI_RADIO_CONFIG_ITEM_NONE = 0,
+    QTI_RADIO_CONFIG_ITEM_VLT_SETTING_ENABLED = 11,
+    QTI_RADIO_CONFIG_ITEM_MOBILE_DATA_ENABLED = 26,
+    QTI_RADIO_CONFIG_ITEM_VOLTE_USER_OPT_IN_STATUS = 33,
+} QTI_RADIO_CONFIG_ITEM;
+
+/*
+struct ConfigInfo {
+    ConfigItem item;
+    bool hasBoolValue;
+    bool boolValue;
+    uint32_t intValue;
+    string stringValue;
+    ConfigFailureCause errorCause;
+};
+
+40 bytes. hasBoolValue and boolValue are HIDL bool, one byte each -- see the
+note on QtiRadioServiceStatusInfo for what happens when that is got wrong.
+*/
+typedef struct qti_radio_config_info {
+    guint32 item RADIO_ALIGNED(4);
+    guint8 has_bool_value RADIO_ALIGNED(1);
+    guint8 bool_value RADIO_ALIGNED(1);
+    guint32 int_value RADIO_ALIGNED(4);
+    GBinderHidlString string_value RADIO_ALIGNED(8);
+    guint32 error_cause RADIO_ALIGNED(4);
+} RADIO_ALIGNED(8) QtiRadioConfigInfo;
+
+/*
 struct CallDetails {
     CallType callType;
     CallDomain callDomain;
@@ -660,6 +706,7 @@ typedef struct qti_radio_hangup_request_info {
     c(6, 3, hangup, HANGUP) \
     c(7, 4, requestRegistrationChange, REQ_REG_CHANGE) \
     c(9, 6, setServiceStatus, SET_SERVICE_STATUS) \
+    c(12, 9, setConfig, SET_CONFIG) \
     c(31, 28, setSuppServiceNotification, SET_SUPP_SVC_NOTIFICATION) \
     c(40, 29, cancelModifyCall, CANCEL_MODIFY_CALL) \
 

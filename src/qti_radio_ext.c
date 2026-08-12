@@ -1209,6 +1209,66 @@ qti_radio_ext_set_service_status(
 
 static
 void
+qti_radio_ext_set_config_args(
+    GBinderWriter* args,
+    va_list va)
+{
+    const gint32 item = va_arg(va, gint32);
+    const gboolean value = va_arg(va, gboolean);
+
+    static const GBinderWriterField qti_radio_config_info_f[] = {
+        GBINDER_WRITER_FIELD_HIDL_STRING(QtiRadioConfigInfo, string_value),
+        GBINDER_WRITER_FIELD_END()
+    };
+    static const GBinderWriterType qti_radio_config_info_t = {
+        GBINDER_WRITER_STRUCT_NAME_AND_SIZE(QtiRadioConfigInfo),
+        qti_radio_config_info_f
+    };
+
+    QtiRadioConfigInfo* info = gbinder_writer_new0(args, QtiRadioConfigInfo);
+
+    info->item = item;
+    info->has_bool_value = TRUE;
+    info->bool_value = value ? TRUE : FALSE;
+    info->int_value = 0;
+    info->error_cause = 0;
+
+    /* stringValue is unused here but still needs its child buffer */
+    binder_copy_hidl_string(args, &info->string_value, NULL);
+
+    gbinder_writer_append_struct(args, info, &qti_radio_config_info_t, NULL);
+}
+
+/*
+ * The provisioning half of turning VoLTE on. setServiceStatus tells the modem
+ * which services to run; this tells it the subscriber is allowed to run them.
+ * On stock Android the telephony framework writes VOLTE_USER_OPT_IN_STATUS
+ * when the user flips the VoLTE switch, and on carriers whose config the
+ * handset does not recognise -- BSNL being the case this was written for --
+ * the switch is hidden, the value is never written, and the modem never
+ * registers no matter what else is configured.
+ */
+guint
+qti_radio_ext_set_config(
+    QtiRadioExt* self,
+    QTI_RADIO_CONFIG_ITEM item,
+    gboolean value,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data)
+{
+    DBG("Setting config item %d to %d", item, value);
+
+    return qti_radio_ext_result_request_submit(self,
+        QTI_RADIO_REQ_SET_CONFIG,
+        QTI_RADIO_RESP_SET_CONFIG,
+        qti_radio_ext_set_config_args,
+        complete, destroy, user_data,
+        (gint32) item, (gboolean) value);
+}
+
+static
+void
 qti_radio_ext_dial_args(
     GBinderWriter* args,
     va_list va)

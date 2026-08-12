@@ -108,6 +108,15 @@ qti_radio_ext_set_service_status(
     void* user_data);
 
 guint
+qti_radio_ext_set_config(
+    QtiRadioExt* self,
+    QTI_RADIO_CONFIG_ITEM item,
+    gboolean value,
+    QtiRadioExtResultFunc complete,
+    GDestroyNotify destroy,
+    void* user_data);
+
+guint
 qti_radio_ext_dial(
     QtiRadioExt* self,
     const char* number,

@@ -239,6 +239,23 @@ qti_ims_set_service_status_response(
     }
 }
 
+static
+void
+qti_ims_set_config_response(
+    QtiRadioExt* radio_ext,
+    int result,
+    GBinderReader* reader,
+    void* user_data)
+{
+    QtiIms* self = THIS(user_data);
+
+    if (result) {
+        DBG("%s setConfig failed, error %d", self->slot, result);
+    } else {
+        DBG("%s VoLTE user opt-in set", self->slot);
+    }
+}
+
 /*==========================================================================*
  * BinderExtImsInterface
  *==========================================================================*/
@@ -299,6 +316,26 @@ qti_ims_set_registration(
      * the requestRegistrationChange below still drives ofono's result as
      * before.
      */
+    /*
+     * Provision the subscriber first.
+     *
+     * VOLTE_USER_OPT_IN_STATUS is what Android's telephony framework writes
+     * when the user turns the VoLTE switch on, and it reaches QMI IMSS "set
+     * client provisioning config". Where the handset does not recognise the
+     * carrier -- BSNL, whose 4G postdates most shipped carrier configs -- the
+     * framework hides that switch, never writes the value, and the modem
+     * declines to register however well everything else is configured. That
+     * is what the widely circulated *#*#86583#*#* dialer code forces open on
+     * Xiaomi builds. ofono has no such switch and no carrier database, so it
+     * is simply written whenever registration is asked for.
+     *
+     * Fire-and-forget, like setServiceStatus below: a HAL without setConfig
+     * answers with an error we only log.
+     */
+    qti_radio_ext_set_config(self->radio_ext,
+        QTI_RADIO_CONFIG_ITEM_VOLTE_USER_OPT_IN_STATUS, enabled,
+        qti_ims_set_config_response, NULL, self);
+
     qti_radio_ext_set_service_status(self->radio_ext,
         QTI_RADIO_SERVICE_TYPE_VOIP,
         enabled ? QTI_RADIO_STATUS_ENABLED : QTI_RADIO_STATUS_DISABLED,
