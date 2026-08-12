@@ -62,6 +62,7 @@ typedef struct qti_ims {
     QtiRadioExt* radio_ext;
     BINDER_EXT_IMS_STATE ims_state;
     gboolean services_enabled;
+    gboolean config_map;
 } QtiIms;
 
 static
@@ -69,6 +70,14 @@ void
 qti_ims_enable_services(
     struct qti_ims* self,
     gboolean enabled);
+
+static
+void
+qti_ims_set_config_response(
+    QtiRadioExt* radio_ext,
+    int result,
+    GBinderReader* reader,
+    void* user_data);
 
 static
 void
@@ -263,6 +272,26 @@ qti_ims_set_service_status_response(
     }
 }
 
+/*
+ * Recover which qcril radio-config item an ims ConfigItem maps to.
+ *
+ * qcril names the item it dispatched to only when the request is a *set*
+ * ("Config item to set: QCRIL_QMI_RADIO_CONFIG_..."); on a get it logs nothing
+ * identifying at all. So a getConfig sweep cannot recover the mapping, and the
+ * table inside libril-qc-qmi-1.so cannot be resolved statically because
+ * Android packs its relocations.
+ *
+ * Writing all 72 items to find out would be reckless. Instead each item is
+ * read and then written back with the value it already had, which makes qcril
+ * log the name while changing nothing.
+ *
+ * That is only truly a no-op for booleans. setConfig carries one boolean, so
+ * writing back an item holding, say, a 2000 ms SIP timer would store 1 and
+ * destroy it. Items whose current value is not plainly boolean are therefore
+ * read and reported but never written -- their names stay unknown, which is an
+ * acceptable price. The item being hunted, QIPCALL_VOLTE_ENABLED, is a
+ * boolean, so it is inside the set this can reach.
+ */
 static
 void
 qti_ims_get_config_response(
@@ -272,8 +301,44 @@ qti_ims_get_config_response(
     void* user_data)
 {
     QtiIms* self = THIS(user_data);
+    GBinderReader reader_copy;
+    const QtiRadioConfigInfo* info;
 
-    DBG("%s getConfig result %d", self->slot, result);
+    if (result) {
+        DBG("%s getConfig result %d", self->slot, result);
+        return;
+    }
+
+    gbinder_reader_copy(&reader_copy, reader);
+    info = gbinder_reader_read_hidl_struct(&reader_copy, QtiRadioConfigInfo);
+    if (!info) {
+        DBG("%s getConfig: unparsable ConfigInfo", self->slot);
+        return;
+    }
+
+    if (info->error_cause) {
+        DBG("%s item %u: error %u", self->slot, info->item, info->error_cause);
+        return;
+    }
+
+    if (info->has_bool_value) {
+        DBG("%s item %u: bool %u -- writing back", self->slot, info->item,
+            info->bool_value);
+    } else if (info->int_value <= 1) {
+        DBG("%s item %u: int %u -- writing back", self->slot, info->item,
+            info->int_value);
+    } else {
+        DBG("%s item %u: int %u -- not boolean, left alone", self->slot,
+            info->item, info->int_value);
+        return;
+    }
+
+    if (self->config_map) {
+        qti_radio_ext_set_config(self->radio_ext,
+            (QTI_RADIO_CONFIG_ITEM) info->item,
+            info->has_bool_value ? info->bool_value : (info->int_value != 0),
+            qti_ims_set_config_response, NULL, self);
+    }
 }
 
 /*
@@ -298,12 +363,23 @@ qti_ims_config_probe(
 {
     static gboolean probed = FALSE;
     const char* env = getenv("QTI_IMS_CONFIG_PROBE");
+    const char* map = getenv("QTI_IMS_CONFIG_MAP");
     int item;
 
     if (probed || !env || !env[0] || env[0] == '0') {
         return;
     }
     probed = TRUE;
+
+    /*
+     * QTI_IMS_CONFIG_MAP additionally writes each boolean item back with the
+     * value it already holds, purely so qcril names it. See the comment on
+     * qti_ims_get_config_response().
+     */
+    self->config_map = (map && map[0] && map[0] != '0');
+    if (self->config_map) {
+        DBG("%s config probe: write-back mapping enabled", self->slot);
+    }
 
     /* 0 is CONFIG_ITEM_NONE and 73 is CONFIG_ITEM_INVALID; skip both */
     DBG("%s config probe: sweeping items 1..72", self->slot);
