@@ -1228,9 +1228,20 @@ qti_radio_ext_set_config_args(
     QtiRadioConfigInfo* info = gbinder_writer_new0(args, QtiRadioConfigInfo);
 
     info->item = item;
+
+    /*
+     * Fill both value slots.
+     *
+     * qcril decides which one to read per config item, not from hasBoolValue:
+     * for the presence items it takes intValue and logs "type: 0", so sending
+     * the value only as boolValue arrives as
+     * "Set config PRESENCE volte_user_opted_in_status to: 0" -- the request
+     * succeeds in reaching the modem and carries the wrong value. Setting both
+     * is correct whichever slot the item happens to use.
+     */
     info->has_bool_value = TRUE;
     info->bool_value = value ? TRUE : FALSE;
-    info->int_value = 0;
+    info->int_value = value ? 1 : 0;
     info->error_cause = 0;
 
     /* stringValue is unused here but still needs its child buffer */
