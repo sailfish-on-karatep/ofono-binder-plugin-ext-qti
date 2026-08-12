@@ -333,6 +333,17 @@ qti_ims_set_registration(
      * answers with an error we only log.
      */
     qti_radio_ext_set_config(self->radio_ext,
+        QTI_RADIO_CONFIG_ITEM_VLT_SETTING_ENABLED, enabled,
+        qti_ims_set_config_response, NULL, self);
+
+    /*
+     * VOLTE_USER_OPT_IN_STATUS is sent as well but is the weaker of the two:
+     * qcril routes it to its *presence* config handler, and on this modem
+     * that write comes back CONFIG_WRITE_FAILED -- the presence service is
+     * one of the QMI services this firmware does not publish. Harmless to
+     * attempt, and it is the item that matters on modems that do have it.
+     */
+    qti_radio_ext_set_config(self->radio_ext,
         QTI_RADIO_CONFIG_ITEM_VOLTE_USER_OPT_IN_STATUS, enabled,
         qti_ims_set_config_response, NULL, self);
 
