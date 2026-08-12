@@ -392,11 +392,14 @@ qti_ims_enable_services(
      * requestRegistrationChange alone is not enough on every QTI RIL: some map
      * it to QMI IMSS "set IMS test mode", which a production modem refuses, so
      * nothing ever reaches the modem's IMS stack and it never attempts to
-     * register. setServiceStatus is the call Android's ims.apk uses, and it
-     * reaches QMI IMSS "set IMS service enable config". Sent fire-and-forget:
-     * a HAL that does not implement it answers with an error we only log, and
-     * the requestRegistrationChange below still drives ofono's result as
-     * before.
+     * register. setServiceStatus is the call Android's ims.apk uses.
+     *
+     * On this HAL build it is a no-op, and worth keeping only because it costs
+     * nothing. The binder transaction completes on both slots -- request 9,
+     * response 6, no error -- and qcril logs absolutely nothing in return: no
+     * set_ims_service_enable_config, no service-enable path at all. The HAL
+     * accepts the call and drops it. Only the setConfig calls below actually
+     * reach the modem, so they are the lever on this device.
      */
     /*
      * Provision the subscriber first.
@@ -421,12 +424,17 @@ qti_ims_enable_services(
         qti_ims_set_config_response, NULL, self);
 
     /*
-     * MOBILE_DATA_ENABLED is the item in qcril's IMS_SERVICE_ENABLE family
-     * (QCRIL_QMI_RADIO_CONFIG_IMS_SERVICE_ENABLE_MOBILE_DATA_ENABLED), which
-     * is the path to QMI IMSS "set IMS service enable config" -- the call a
-     * working handset makes on SIM insert, four seconds before IMS registers,
-     * and the one this stack had never made. A getConfig sweep of all 72
-     * items confirms this qcril supports it.
+     * MOBILE_DATA_ENABLED lands in qcril's QIPCALL family, not the
+     * IMS_SERVICE_ENABLE one this comment used to claim. Both names exist in
+     * qcril, which is what made the guess plausible, but the running RIL is
+     * unambiguous once the call actually happens:
+     *
+     *   Config item to set: QCRIL_QMI_RADIO_CONFIG_QIPCALL_MOBILE_DATA_ENABLED
+     *   Set config QIPCALL mobile_data_enabled to: 1 -- response success
+     *
+     * Item 11 resolves the same way, to CLIENT_PROVISIONING_ENABLE_VOLTE
+     * rather than anything in QIPCALL. Both writes reach the modem and both
+     * succeed.
      *
      * VOLTE_USER_OPT_IN_STATUS is no longer sent. The same sweep shows this
      * qcril refuses it, and every other item in the presence family (14-24,
