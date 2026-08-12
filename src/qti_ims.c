@@ -252,7 +252,7 @@ qti_ims_set_config_response(
     if (result) {
         DBG("%s setConfig failed, error %d", self->slot, result);
     } else {
-        DBG("%s VoLTE user opt-in set", self->slot);
+        DBG("%s setConfig accepted", self->slot);
     }
 }
 
